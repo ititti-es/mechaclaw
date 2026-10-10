@@ -1,4 +1,4 @@
-// Memory Core tests cover memory_search and memory_get with liminal conversation recall.
+// Memory Core tests cover memory_search and memory_get with conversation recall.
 import { clearMemoryPluginState } from "openclaw/plugin-sdk/memory-host-core";
 import { requestBodyText, requestUrl } from "openclaw/plugin-sdk/test-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,17 +32,23 @@ const HIT = {
   content: "assistant: Fish S2.1 Pro does instant voice cloning from a reference clip.",
 };
 
-function config(liminal?: unknown) {
+function config(recall?: Record<string, unknown>) {
   return asOpenClawConfig({
     agents: { list: [{ id: "main", default: true }] },
-    models: { providers: { liminal: { baseUrl: "http://127.0.0.1:4000/v1", models: [] } } },
-    plugins: { entries: { "memory-core": { config: liminal ? { liminal } : {} } } },
+    models: { providers: { litellm: { baseUrl: "http://127.0.0.1:4000/v1", models: [] } } },
+    plugins: {
+      entries: {
+        "memory-core": {
+          config: recall ? { conversationRecall: { provider: "litellm", ...recall } } : {},
+        },
+      },
+    },
   } as never);
 }
 
 type Routes = Record<string, (body: Record<string, unknown>) => Response>;
 
-function stubLiminal(routes: Routes) {
+function stubStore(routes: Routes) {
   const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
   vi.stubGlobal(
     "fetch",
@@ -82,7 +88,7 @@ async function search(
   };
 }
 
-describe("memory_search with liminal conversation recall", () => {
+describe("memory_search with conversation recall", () => {
   beforeEach(() => {
     clearMemoryPluginState();
     resetMemoryToolMockState();
@@ -94,7 +100,7 @@ describe("memory_search with liminal conversation recall", () => {
   });
 
   it("ranks notes and conversation hits together on the reranker's scores", async () => {
-    const calls = stubLiminal({
+    const calls = stubStore({
       "/memory/search": () => json({ object: "list", data: [HIT] }),
       "/memory/rerank": () =>
         json({
@@ -122,8 +128,8 @@ describe("memory_search with liminal conversation recall", () => {
     ).toContain("Sett voice: clone from League VO.");
   });
 
-  it("falls back to the notes with a warning when liminal is down", async () => {
-    stubLiminal({ "/memory/search": () => json({ detail: "down" }, 503) });
+  it("falls back to the notes with a warning when the session store is down", async () => {
+    stubStore({ "/memory/search": () => json({ detail: "down" }, 503) });
     const details = await search(config({ enabled: true }), { query: "voice" });
     expect(details.results.map((result) => result.path)).toEqual(["MEMORY.md"]);
     expect(details.conversations).toMatchObject({ outcome: "unavailable", count: 0 });
@@ -131,7 +137,7 @@ describe("memory_search with liminal conversation recall", () => {
   });
 
   it("keeps both streams when only the reranker fails, and says the order is approximate", async () => {
-    stubLiminal({
+    stubStore({
       "/memory/search": () => json({ object: "list", data: [HIT] }),
       "/memory/rerank": () => json({ detail: "rerank down" }, 502),
     });
@@ -144,8 +150,8 @@ describe("memory_search with liminal conversation recall", () => {
     expect(details.warning).toContain("not reranked");
   });
 
-  it("serves the sessions corpus from liminal only, and the memory corpus from the notes only", async () => {
-    const calls = stubLiminal({
+  it("serves the sessions corpus from the session store only, and the memory corpus from the notes only", async () => {
+    const calls = stubStore({
       "/memory/search": () => json({ object: "list", data: [HIT] }),
       "/memory/rerank": () => json({ data: [{ index: 0, score: 0.9 }] }),
     });
@@ -160,8 +166,8 @@ describe("memory_search with liminal conversation recall", () => {
     expect(calls).toEqual([]);
   });
 
-  it("never reaches liminal when disabled, for other senders, sandboxed, or in a group", async () => {
-    const calls = stubLiminal({ "/memory/search": () => json({ object: "list", data: [HIT] }) });
+  it("never reaches the session store when disabled, for other senders, sandboxed, or in a group", async () => {
+    const calls = stubStore({ "/memory/search": () => json({ object: "list", data: [HIT] }) });
     for (const [cfg, options] of [
       [config(), {}],
       [config({ enabled: true }), { senderIsOwner: false }],
@@ -186,8 +192,8 @@ describe("memory_get for conversation hits", () => {
     vi.unstubAllGlobals();
   });
 
-  it("reads the messages around a hit from liminal", async () => {
-    const calls = stubLiminal({
+  it("reads the messages around a hit from the session store", async () => {
+    const calls = stubStore({
       "/memory/context": () =>
         json({
           session_id: "ses_1",
@@ -221,8 +227,8 @@ describe("memory_get for conversation hits", () => {
     });
   });
 
-  it("reports not_found for a session liminal will not show this caller", async () => {
-    stubLiminal({ "/memory/context": () => json({ detail: "No session in your memory." }, 404) });
+  it("reports not_found for a session the store will not show this caller", async () => {
+    stubStore({ "/memory/context": () => json({ detail: "No session in your memory." }, 404) });
     const tool = createMemoryGetTool({
       config: config({ enabled: true }),
       agentSessionKey: "agent:main:main",

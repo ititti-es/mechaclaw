@@ -21,7 +21,7 @@ import {
   finishConversationRecall,
   resolveConversationRecall,
   searchesConversationCorpus,
-} from "./liminal-tool.js";
+} from "./conversation-recall-tool.js";
 import {
   attemptMemoryCorpus,
   composeMemoryCorpusMetadata,
@@ -254,10 +254,10 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
         const requestedCorpus =
           options.conversationRecall?.corpus === "sessions" ? "sessions" : modelRequestedCorpus;
         // Conversation recall is user-wide, so it is off for sandboxed, group, and scoped-recall runs.
-        const liminal = resolveConversationRecall(cfg, options);
+        const conversationRecall = resolveConversationRecall(cfg, options);
         if (
           requestedCorpus === "sessions" &&
-          !liminal &&
+          !conversationRecall &&
           !options.conversationRecall &&
           !settings.searchSources.includes("sessions")
         ) {
@@ -272,9 +272,9 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
         const cooldown =
           requestedCorpus === "wiki" ? undefined : readMemorySearchToolCooldown(agentId, cfg);
         const toolStartedAt = Date.now();
-        // With liminal on it owns conversation history, so the sessions corpus is served there.
+        // With conversation recall on the store owns conversation history, so the sessions corpus is served there.
         const searchesMemory =
-          requestedCorpus !== "wiki" && !(liminal && requestedCorpus === "sessions");
+          requestedCorpus !== "wiki" && !(conversationRecall && requestedCorpus === "sessions");
         const searchesWiki = requestedCorpus === "wiki" || requestedCorpus === "all";
         const memoryManagerPurpose = options.oneShotCliRun ? "cli" : undefined;
         const memoryManagersToClose = new Set<ActiveMemoryManagerContext["manager"]>();
@@ -450,9 +450,9 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
                         }),
                     })
                   : Promise.resolve(null),
-                searchesConversationCorpus(liminal, requestedCorpus)
+                searchesConversationCorpus(conversationRecall, requestedCorpus)
                   ? attemptConversationSearch(
-                      { config: liminal, cfg, agentId, signal },
+                      { config: conversationRecall, cfg, agentId, signal },
                       query,
                       resultLimit,
                     )
@@ -500,7 +500,7 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
                 : (memoryValue?.results ?? []);
               const blended = await finishConversationRecall({
                 attempt: conversations,
-                config: liminal,
+                config: conversationRecall,
                 call: { cfg, agentId, signal },
                 query,
                 notes: notesResults,

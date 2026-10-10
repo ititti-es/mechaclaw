@@ -190,7 +190,7 @@ describe("sanitizeSessionHistory openai tool id preservation", () => {
   ])(
     "keeps provider tool ids only where the endpoint owns history (owned: $ownedByServer)",
     async ({ ownedByServer, expected }) => {
-      // A history-owning gateway (liminal) stores Claude's call as toolu_*; reshaping the output to
+      // A history-owning gateway (a LiteLLM proxy) stores Claude's call as toolu_*; reshaping the output to
       // call_* left that call unanswered and the provider refused the turn.
       const rawToolCallId = "toolu_01EPHeygGyE3fC13D29X8YE3|fc_toolu_01EPHeygGyE3fC13D29X8YE3";
       const result = await sanitizeSessionHistory({
@@ -202,12 +202,12 @@ describe("sanitizeSessionHistory openai tool id preservation", () => {
           castAgentMessage(textToolResult(rawToolCallId, "noop", "ok", { isError: false })),
         ],
         modelApi: "openai-responses",
-        provider: "liminal",
+        provider: "litellm",
         modelId: "claude-sonnet-5-5",
         model: {
           id: "claude-sonnet-5-5",
           name: "Claude Sonnet 5.5",
-          provider: "liminal",
+          provider: "litellm",
           api: "openai-responses",
           baseUrl: "http://127.0.0.1:4000/v1",
           reasoning: false,

@@ -238,7 +238,7 @@ describe("gateway chat.inject transcript writes", () => {
         sessionKey: fixture.sessionKey,
         storePath: fixture.storePath,
         message: "Continuing from the imported conversation.",
-        continuation: { provider: "liminal", model: "composer-2.5", responseId: "resp_imp_1" },
+        continuation: { provider: "litellm", model: "composer-2.5", responseId: "resp_imp_1" },
       });
       const last = (await readLastTranscriptRecord(fixture)) as {
         message?: Record<string, unknown>;
@@ -248,7 +248,7 @@ describe("gateway chat.inject transcript writes", () => {
       expect(last.message).toMatchObject({
         role: "assistant",
         api: "openai-responses",
-        provider: "liminal",
+        provider: "litellm",
         model: "composer-2.5",
         responseId: "resp_imp_1",
         stopReason: "stop",

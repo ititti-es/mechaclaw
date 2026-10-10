@@ -8,7 +8,7 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
 import type { TSchema } from "typebox";
-import { resolveLiminalRecallForSession } from "./liminal-recall.js";
+import { resolveConversationRecallForSession } from "./conversation-recall.js";
 import type { MemoryCoreAcquireLocalService } from "./memory/embedding-local-service.js";
 
 export type MemoryToolOptions = {
@@ -92,7 +92,7 @@ export function resolveMemoryToolContext(options: MemoryToolOptions) {
         settings,
         sources: resolveMemorySourceContract(
           settings,
-          resolveLiminalRecallForSession(cfg, {
+          resolveConversationRecallForSession(cfg, {
             sessionKey: options.agentSessionKey,
             sandboxed: options.sandboxed,
             scopedRecall: options.conversationRecall !== undefined,

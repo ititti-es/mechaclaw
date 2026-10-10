@@ -1,30 +1,36 @@
-// Memory Core tests cover the liminal conversation recall client.
+// Memory Core tests cover the conversation recall client.
 import type { OpenClawConfig } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import { requestBodyText } from "openclaw/plugin-sdk/test-env";
 import { describe, expect, it, vi } from "vitest";
 import {
   parseConversationPath,
-  rankByLiminalRerank,
-  readLiminalConversation,
-  resolveLiminalRecallConfig,
-  resolveLiminalRecallForSession,
-  searchLiminalConversations,
-  type LiminalRecallCall,
-} from "./liminal-recall.js";
+  rankByStoreRerank,
+  readStoredConversation,
+  resolveConversationRecallConfig,
+  resolveConversationRecallForSession,
+  searchStoredConversations,
+  type ConversationRecallCall,
+} from "./conversation-recall.js";
 
-function configWith(liminal: unknown, providers?: Record<string, unknown>): OpenClawConfig {
+function configWith(
+  conversationRecall: unknown,
+  providers?: Record<string, unknown>,
+): OpenClawConfig {
   return {
     models: {
-      providers: providers ?? { liminal: { baseUrl: "http://127.0.0.1:4000/v1", models: [] } },
+      providers: providers ?? { litellm: { baseUrl: "http://127.0.0.1:4000/v1", models: [] } },
     },
-    plugins: { entries: { "memory-core": { config: { liminal } } } },
+    plugins: { entries: { "memory-core": { config: { conversationRecall } } } },
   } as unknown as OpenClawConfig;
 }
 
-const ENABLED = configWith({ enabled: true });
+const ENABLED = configWith({ enabled: true, provider: "litellm" });
 
-function callWith(fetchImpl: typeof fetch, extra?: Partial<LiminalRecallCall>): LiminalRecallCall {
-  const config = resolveLiminalRecallConfig(ENABLED);
+function callWith(
+  fetchImpl: typeof fetch,
+  extra?: Partial<ConversationRecallCall>,
+): ConversationRecallCall {
+  const config = resolveConversationRecallConfig(ENABLED);
   if (!config) {
     throw new Error("config missing");
   }
@@ -44,38 +50,47 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe("resolveLiminalRecallConfig", () => {
+describe("resolveConversationRecallConfig", () => {
   it("is off unless explicitly enabled", () => {
-    expect(resolveLiminalRecallConfig(undefined)).toBeNull();
-    expect(resolveLiminalRecallConfig(configWith(undefined))).toBeNull();
-    expect(resolveLiminalRecallConfig(configWith({ enabled: false }))).toBeNull();
+    expect(resolveConversationRecallConfig(undefined)).toBeNull();
+    expect(resolveConversationRecallConfig(configWith(undefined))).toBeNull();
+    expect(resolveConversationRecallConfig(configWith({ enabled: false }))).toBeNull();
   });
 
   it("reads the endpoint from the model provider and normalizes the /v1 root", () => {
-    expect(resolveLiminalRecallConfig(ENABLED)).toMatchObject({
-      provider: "liminal",
+    expect(resolveConversationRecallConfig(ENABLED)).toMatchObject({
+      provider: "litellm",
       root: "http://127.0.0.1:4000/v1",
     });
     const bare = configWith(
       { enabled: true, provider: "lim", timeoutMs: 5000 },
-      { lim: { baseUrl: "https://liminal.example/", models: [] } },
+      { lim: { baseUrl: "https://proxy.example/", models: [] } },
     );
-    expect(resolveLiminalRecallConfig(bare)).toEqual({
+    expect(resolveConversationRecallConfig(bare)).toEqual({
       provider: "lim",
-      root: "https://liminal.example/v1",
+      root: "https://proxy.example/v1",
       timeoutMs: 5000,
     });
   });
 
   it("stays off when the provider has no base URL", () => {
-    expect(resolveLiminalRecallConfig(configWith({ enabled: true }, {}))).toBeNull();
+    expect(
+      resolveConversationRecallConfig(configWith({ enabled: true, provider: "litellm" }, {})),
+    ).toBeNull();
+  });
+
+  it("stays off without an explicit provider", () => {
+    expect(resolveConversationRecallConfig(configWith({ enabled: true }))).toBeNull();
+    expect(
+      resolveConversationRecallConfig(configWith({ enabled: true, provider: " " })),
+    ).toBeNull();
   });
 });
 
-describe("resolveLiminalRecallForSession", () => {
+describe("resolveConversationRecallForSession", () => {
   it("allows the owner's direct sessions and refuses others, sandboxed, group, channel, and scoped runs", () => {
-    const allowed = (session: Parameters<typeof resolveLiminalRecallForSession>[1]) =>
-      resolveLiminalRecallForSession(ENABLED, { senderIsOwner: true, ...session }) !== null;
+    const allowed = (session: Parameters<typeof resolveConversationRecallForSession>[1]) =>
+      resolveConversationRecallForSession(ENABLED, { senderIsOwner: true, ...session }) !== null;
     expect(allowed({})).toBe(true);
     expect(allowed({ sessionKey: "agent:main:main" })).toBe(true);
     expect(allowed({ senderIsOwner: false })).toBe(false);
@@ -99,7 +114,7 @@ describe("conversation paths", () => {
   });
 });
 
-describe("searchLiminalConversations", () => {
+describe("searchStoredConversations", () => {
   it("posts the query with the key and agent id and maps hits to corpus results", async () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
       jsonResponse({
@@ -120,7 +135,7 @@ describe("searchLiminalConversations", () => {
         ],
       }),
     );
-    const results = await searchLiminalConversations(callWith(fetchMock as typeof fetch), {
+    const results = await searchStoredConversations(callWith(fetchMock as typeof fetch), {
       query: "tomatoes",
       limit: 5,
     });
@@ -149,12 +164,12 @@ describe("searchLiminalConversations", () => {
     ]);
   });
 
-  it("surfaces liminal's own error text and fails without a key", async () => {
+  it("surfaces the store's own error text and fails without a key", async () => {
     const refused = vi.fn(async () =>
       jsonResponse({ detail: "Memory search needs DATABASE_URL" }, 503),
     );
     await expect(
-      searchLiminalConversations(callWith(refused as unknown as typeof fetch), {
+      searchStoredConversations(callWith(refused as unknown as typeof fetch), {
         query: "x",
         limit: 3,
       }),
@@ -162,8 +177,8 @@ describe("searchLiminalConversations", () => {
     const noKey = callWith(refused as unknown as typeof fetch, {
       deps: { fetch: refused as unknown as typeof fetch, resolveApiKey: async () => undefined },
     });
-    await expect(searchLiminalConversations(noKey, { query: "x", limit: 3 })).rejects.toThrow(
-      /no API key for provider liminal/,
+    await expect(searchStoredConversations(noKey, { query: "x", limit: 3 })).rejects.toThrow(
+      /no API key for provider litellm/,
     );
   });
 });
@@ -180,7 +195,7 @@ describe("reranking", () => {
     );
     const notes = { snippet: "notes" };
     const long = { snippet: "x".repeat(9000) };
-    const { ranked, scores } = await rankByLiminalRerank(callWith(fetchMock as typeof fetch), {
+    const { ranked, scores } = await rankByStoreRerank(callWith(fetchMock as typeof fetch), {
       query: "q",
       candidates: [notes, long],
       limit: 2,
@@ -208,7 +223,7 @@ describe("reranking", () => {
         ],
       }),
     );
-    const { ranked, scores } = await rankByLiminalRerank(
+    const { ranked, scores } = await rankByStoreRerank(
       callWith(fetchMock as unknown as typeof fetch),
       {
         query: "q",
@@ -222,7 +237,7 @@ describe("reranking", () => {
   });
 });
 
-describe("readLiminalConversation", () => {
+describe("readStoredConversation", () => {
   it("windows the read around the hit and formats the messages", async () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
       jsonResponse({
@@ -239,7 +254,7 @@ describe("readLiminalConversation", () => {
         ],
       }),
     );
-    const read = await readLiminalConversation(callWith(fetchMock as typeof fetch), {
+    const read = await readStoredConversation(callWith(fetchMock as typeof fetch), {
       sessionId: "ses_1",
       seq: 4,
       lines: 5,
@@ -266,17 +281,17 @@ describe("readLiminalConversation", () => {
       jsonResponse({ detail: "No session ses_x in your memory." }, 404),
     );
     await expect(
-      readLiminalConversation(callWith(missing as unknown as typeof fetch), {
+      readStoredConversation(callWith(missing as unknown as typeof fetch), {
         sessionId: "ses_x",
         seq: 0,
       }),
     ).resolves.toBeNull();
     const broken = vi.fn(async () => jsonResponse({ detail: "boom" }, 500));
     await expect(
-      readLiminalConversation(callWith(broken as unknown as typeof fetch), {
+      readStoredConversation(callWith(broken as unknown as typeof fetch), {
         sessionId: "ses_x",
         seq: 0,
       }),
-    ).rejects.toMatchObject({ name: "LiminalRecallError", status: 500 });
+    ).rejects.toMatchObject({ name: "ConversationRecallError", status: 500 });
   });
 });

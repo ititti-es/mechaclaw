@@ -186,7 +186,7 @@ describe("server-owned chat history", () => {
     const cfg = {
       models: {
         providers: {
-          liminal: {
+          litellm: {
             baseUrl: "http://127.0.0.1:4000/v1",
             models: [
               {
@@ -211,14 +211,14 @@ describe("server-owned chat history", () => {
       },
     } as unknown as OpenClawConfig;
 
-    expect(resolveServerOwnedHistoryRoute(cfg, "liminal", "owned")).toEqual({
-      provider: "liminal",
+    expect(resolveServerOwnedHistoryRoute(cfg, "litellm", "owned")).toEqual({
+      provider: "litellm",
       modelId: "owned",
       baseUrl: "http://127.0.0.1:4000/v1",
       pruneLocalContent: false,
     });
-    expect(resolveServerOwnedHistoryRoute(cfg, "liminal", "pruned")?.pruneLocalContent).toBe(true);
-    expect(resolveServerOwnedHistoryRoute(cfg, "liminal", "stateless")).toBeUndefined();
+    expect(resolveServerOwnedHistoryRoute(cfg, "litellm", "pruned")?.pruneLocalContent).toBe(true);
+    expect(resolveServerOwnedHistoryRoute(cfg, "litellm", "stateless")).toBeUndefined();
     expect(resolveServerOwnedHistoryRoute(cfg, "other", "owned")).toBeUndefined();
   });
 });
