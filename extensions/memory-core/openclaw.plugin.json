@@ -42,14 +42,14 @@
     }
   ],
   "uiHints": {
-    "liminal.enabled": {
-      "label": "Liminal Conversation Recall",
-      "help": "Also search every past conversation in the liminal session store (reranked) from memory_search, and read hits with memory_get. Uses the endpoint and key of the model provider named below."
+    "conversationRecall.enabled": {
+      "label": "Conversation Recall",
+      "help": "Also search every past conversation in the LiteLLM-compatible session store (reranked) from memory_search, and read hits with memory_get. Uses the endpoint and key of the model provider named below."
     },
-    "liminal.provider": {
-      "label": "Liminal Provider",
-      "placeholder": "liminal",
-      "help": "Model provider id whose baseUrl and API key reach liminal."
+    "conversationRecall.provider": {
+      "label": "Conversation Recall Provider",
+      "placeholder": "litellm",
+      "help": "Model provider id whose baseUrl and API key reach the session store. Required."
     },
     "dreaming.enabled": {
       "label": "Dreaming Enabled",
@@ -88,12 +88,12 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "liminal": {
+      "conversationRecall": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "enabled": { "type": "boolean", "default": false },
-          "provider": { "type": "string", "default": "liminal" },
+          "provider": { "type": "string" },
           "timeoutMs": { "type": "integer", "minimum": 1000 }
         }
       },

@@ -6,17 +6,16 @@ import { parseAgentSessionKey } from "openclaw/plugin-sdk/memory-core-host-runti
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 
 /**
- * Conversation recall over liminal's session store, blended into `memory_search` / `memory_get`.
+ * Conversation recall over a LiteLLM-compatible proxy's session store, blended into `memory_search` / `memory_get`.
  *
- * liminal owns every conversation (OpenClaw, opencode, Claude Code) and answers `POST /v1/memory/search`
+ * The proxy owns every conversation (OpenClaw, opencode, Claude Code) and answers `POST /v1/memory/search`
  * with embedding + rerank, scoped to the calling key's user. This module is only the client: it never sees
- * the store, and a missing or failing liminal degrades `memory_search` to the workspace notes with a warning.
+ * the store, and a missing or failing store degrades `memory_search` to the workspace notes with a warning.
  *
- * Enabled per instance with `plugins.entries.memory-core.config.liminal.enabled=true`; the endpoint and key
- * come from the configured model provider (default `liminal`), so no extra secret is introduced.
+ * Enabled per instance with `plugins.entries.memory-core.config.conversationRecall.enabled=true` and an explicit
+ * `provider`; the endpoint and key come from that model provider, so no extra secret is introduced.
  */
 
-const DEFAULT_PROVIDER = "liminal";
 const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_SEARCH_LIMIT = 50;
 const MAX_RERANK_DOCUMENTS = 64;
@@ -28,14 +27,14 @@ const DEFAULT_CONTEXT_SIDE = 4;
 const CONVERSATION_PATH_PREFIX = "conversation:";
 const CONVERSATION_PATH_PATTERN = /^conversation:([^#\s]+)#(\d+)$/;
 
-export type LiminalRecallConfig = {
+export type ConversationRecallConfig = {
   provider: string;
   /** OpenAI-compatible root of the provider, e.g. `http://127.0.0.1:4000/v1`. */
   root: string;
   timeoutMs: number;
 };
 
-type LiminalRecallDeps = {
+type ConversationRecallDeps = {
   fetch?: typeof fetch;
   resolveApiKey?: (params: {
     provider: string;
@@ -43,15 +42,15 @@ type LiminalRecallDeps = {
   }) => Promise<string | undefined>;
 };
 
-export type LiminalRecallCall = {
-  config: LiminalRecallConfig;
+export type ConversationRecallCall = {
+  config: ConversationRecallConfig;
   cfg: OpenClawConfig;
   agentId?: string;
   signal?: AbortSignal;
-  deps?: LiminalRecallDeps;
+  deps?: ConversationRecallDeps;
 };
 
-type LiminalHit = {
+type StoredConversationHit = {
   score: number;
   session_id: string;
   seq: number;
@@ -63,7 +62,7 @@ type LiminalHit = {
   content: string;
 };
 
-type LiminalContext = {
+type StoredConversationContext = {
   session_id: string;
   title: string | null;
   started: string | null;
@@ -85,29 +84,29 @@ export type ConversationRead = {
   agent?: string;
 };
 
-class LiminalRecallError extends Error {
+class ConversationRecallError extends Error {
   constructor(
     message: string,
     readonly status?: number,
   ) {
     super(message);
-    this.name = "LiminalRecallError";
+    this.name = "ConversationRecallError";
   }
 }
 
-/** The liminal block of the memory-core plugin config, or null when recall is not enabled. */
-export function resolveLiminalRecallConfig(
+/** The conversationRecall block of the memory-core plugin config, or null when recall is not enabled. */
+export function resolveConversationRecallConfig(
   cfg: OpenClawConfig | undefined,
-): LiminalRecallConfig | null {
+): ConversationRecallConfig | null {
   const plugin: unknown = cfg?.plugins?.entries?.["memory-core"]?.config;
-  const raw = isRecord(plugin) ? plugin.liminal : undefined;
+  const raw = isRecord(plugin) ? plugin.conversationRecall : undefined;
   if (!isRecord(raw) || raw.enabled !== true) {
     return null;
   }
-  const provider =
-    typeof raw.provider === "string" && raw.provider.trim()
-      ? raw.provider.trim()
-      : DEFAULT_PROVIDER;
+  const provider = typeof raw.provider === "string" ? raw.provider.trim() : "";
+  if (!provider) {
+    return null;
+  }
   const baseUrl: unknown = cfg?.models?.providers?.[provider]?.baseUrl;
   if (typeof baseUrl !== "string" || !baseUrl.trim()) {
     return null;
@@ -123,7 +122,7 @@ export function resolveLiminalRecallConfig(
  * the owner's, in direct, unsandboxed sessions without a trusted-runtime recall scope. Everyone else (other
  * senders, group and channel sessions) keeps the workspace notes only.
  */
-export function resolveLiminalRecallForSession(
+export function resolveConversationRecallForSession(
   cfg: OpenClawConfig | undefined,
   session: {
     sessionKey?: string;
@@ -131,7 +130,7 @@ export function resolveLiminalRecallForSession(
     scopedRecall?: boolean;
     senderIsOwner?: boolean;
   },
-): LiminalRecallConfig | null {
+): ConversationRecallConfig | null {
   if (
     session.senderIsOwner !== true ||
     session.sandboxed === true ||
@@ -143,7 +142,7 @@ export function resolveLiminalRecallForSession(
   if (rest && /(^|:)(group|channel)(:|$)/.test(rest)) {
     return null;
   }
-  return resolveLiminalRecallConfig(cfg);
+  return resolveConversationRecallConfig(cfg);
 }
 
 async function defaultResolveApiKey(params: {
@@ -154,14 +153,14 @@ async function defaultResolveApiKey(params: {
   return (await resolveApiKeyForProvider({ provider: params.provider, cfg: params.cfg }))?.apiKey;
 }
 
-async function post<T>(call: LiminalRecallCall, path: string, body: unknown): Promise<T> {
+async function post<T>(call: ConversationRecallCall, path: string, body: unknown): Promise<T> {
   const { config, cfg, agentId, signal, deps } = call;
   const apiKey = await (deps?.resolveApiKey ?? defaultResolveApiKey)({
     provider: config.provider,
     cfg,
   });
   if (!apiKey) {
-    throw new LiminalRecallError(`no API key for provider ${config.provider}`);
+    throw new ConversationRecallError(`no API key for provider ${config.provider}`);
   }
   const timeout = AbortSignal.timeout(config.timeoutMs);
   const response = await (deps?.fetch ?? fetch)(`${config.root}${path}`, {
@@ -185,8 +184,8 @@ async function post<T>(call: LiminalRecallCall, path: string, body: unknown): Pr
     } catch {
       // Keep the raw text.
     }
-    throw new LiminalRecallError(
-      `liminal ${path} answered ${response.status}: ${message}`,
+    throw new ConversationRecallError(
+      `session store ${path} answered ${response.status}: ${message}`,
       response.status,
     );
   }
@@ -207,12 +206,12 @@ export function parseConversationPath(lookup: string): { sessionId: string; seq:
 }
 
 /** Reranked conversation passages for a query, shaped like the other memory corpora's results. */
-export async function searchLiminalConversations(
-  call: LiminalRecallCall,
+export async function searchStoredConversations(
+  call: ConversationRecallCall,
   params: { query: string; limit: number },
 ): Promise<MemoryCorpusSearchResult[]> {
   const limit = Math.max(1, Math.min(MAX_SEARCH_LIMIT, params.limit));
-  const response = await post<{ data?: LiminalHit[] }>(call, "/memory/search", {
+  const response = await post<{ data?: StoredConversationHit[] }>(call, "/memory/search", {
     query: params.query,
     limit,
   });
@@ -236,8 +235,8 @@ export async function searchLiminalConversations(
 }
 
 /** Reranker scores for the candidates, in input order (higher is more relevant). */
-async function rerankWithLiminal(
-  call: LiminalRecallCall,
+async function rerankWithStore(
+  call: ConversationRecallCall,
   params: { query: string; documents: readonly string[] },
 ): Promise<number[]> {
   const documents = params.documents
@@ -261,8 +260,8 @@ async function rerankWithLiminal(
 }
 
 /** The messages around a conversation hit; `lines` sizes the window around the hit message. */
-export async function readLiminalConversation(
-  call: LiminalRecallCall,
+export async function readStoredConversation(
+  call: ConversationRecallCall,
   params: { sessionId: string; seq: number; lines?: number },
 ): Promise<ConversationRead | null> {
   const span = Math.max(
@@ -271,16 +270,16 @@ export async function readLiminalConversation(
   );
   const before = Math.min(MAX_CONTEXT_SIDE, Math.floor((span - 1) / 2));
   const after = Math.min(MAX_CONTEXT_SIDE, span - 1 - before);
-  let context: LiminalContext;
+  let context: StoredConversationContext;
   try {
-    context = await post<LiminalContext>(call, "/memory/context", {
+    context = await post<StoredConversationContext>(call, "/memory/context", {
       session_id: params.sessionId,
       seq: params.seq,
       before,
       after,
     });
   } catch (error) {
-    if (error instanceof LiminalRecallError && error.status === 404) {
+    if (error instanceof ConversationRecallError && error.status === 404) {
       return null;
     }
     throw error;
@@ -303,12 +302,12 @@ export async function readLiminalConversation(
  * Orders mixed candidates (workspace notes and conversation hits) by one reranker, so their scores are
  * comparable. Candidates the reranker did not score sink to the end in their original order.
  */
-export async function rankByLiminalRerank<T extends { snippet: string }>(
-  call: LiminalRecallCall,
+export async function rankByStoreRerank<T extends { snippet: string }>(
+  call: ConversationRecallCall,
   params: { query: string; candidates: readonly T[]; limit: number },
 ): Promise<{ ranked: T[]; scores: Map<T, number> }> {
   const scored = params.candidates.slice(0, MAX_RERANK_DOCUMENTS);
-  const values = await rerankWithLiminal(call, {
+  const values = await rerankWithStore(call, {
     query: params.query,
     documents: scored.map((candidate) => candidate.snippet),
   });

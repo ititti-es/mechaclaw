@@ -13,10 +13,10 @@ import {
   type OpenClawPluginToolContext,
 } from "openclaw/plugin-sdk/plugin-entry";
 import type { OpenKeyedStoreOptions } from "openclaw/plugin-sdk/plugin-state-runtime";
+import { resolveConversationRecallConfig } from "./src/conversation-recall.js";
 import { configureMemoryCoreDreamingState } from "./src/dreaming-state.js";
 import { registerShortTermPromotionDreaming } from "./src/dreaming.js";
 import { buildMemoryFlushPlan } from "./src/flush-plan.js";
-import { resolveLiminalRecallConfig } from "./src/liminal-recall.js";
 import "./src/memory/background-context.js";
 import {
   buildMemoryPromptSection,
@@ -245,7 +245,7 @@ export default definePluginEntry({
         });
         return context
           ? buildMemoryPromptSection(params, {
-              conversations: resolveLiminalRecallConfig(context.cfg) !== null,
+              conversations: resolveConversationRecallConfig(context.cfg) !== null,
             })
           : [];
       },

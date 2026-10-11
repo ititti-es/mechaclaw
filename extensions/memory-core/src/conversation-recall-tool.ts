@@ -6,25 +6,25 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
 import {
   parseConversationPath,
-  rankByLiminalRerank,
-  readLiminalConversation,
-  resolveLiminalRecallForSession,
-  searchLiminalConversations,
-  type LiminalRecallCall,
-  type LiminalRecallConfig,
-} from "./liminal-recall.js";
+  rankByStoreRerank,
+  readStoredConversation,
+  resolveConversationRecallForSession,
+  searchStoredConversations,
+  type ConversationRecallCall,
+  type ConversationRecallConfig,
+} from "./conversation-recall.js";
 import { runMemoryCorpusDeadline } from "./memory-corpus.js";
 import type { MemoryToolOptions } from "./memory-tool-contract.js";
 import type { MemorySearchToolResult } from "./tools.citations.js";
 
 /**
- * How `memory_search` / `memory_get` use liminal conversation recall (see liminal-recall.ts for the client).
+ * How `memory_search` / `memory_get` use conversation recall (see conversation-recall.ts for the client).
  * Kept out of tools.ts so the search tool only decides when to ask and the rules for blending live here.
  */
 
 export type ConversationAttempt = { results: MemoryCorpusSearchResult[]; error?: string };
 
-type ConversationCall = Omit<LiminalRecallCall, "config">;
+type ConversationCall = Omit<ConversationRecallCall, "config">;
 
 export type ConversationRecall = {
   /** Notes and conversation hits in final order, at most `limit`. */
@@ -45,8 +45,8 @@ export function resolveConversationRecall(
     MemoryToolOptions,
     "agentSessionKey" | "sandboxed" | "conversationRecall" | "senderIsOwner"
   >,
-): LiminalRecallConfig | null {
-  return resolveLiminalRecallForSession(cfg, {
+): ConversationRecallConfig | null {
+  return resolveConversationRecallForSession(cfg, {
     sessionKey: options.agentSessionKey,
     sandboxed: options.sandboxed,
     scopedRecall: options.conversationRecall !== undefined,
@@ -56,20 +56,20 @@ export function resolveConversationRecall(
 
 /** Conversations are searched by default and for `all` and `sessions`; `memory` and `wiki` exclude them. */
 export function searchesConversationCorpus(
-  recall: LiminalRecallConfig | null,
+  recall: ConversationRecallConfig | null,
   corpus: "memory" | "wiki" | "all" | "sessions" | undefined,
-): recall is LiminalRecallConfig {
+): recall is ConversationRecallConfig {
   return recall !== null && (corpus === undefined || corpus === "all" || corpus === "sessions");
 }
 
-/** A failing liminal never fails the search: it degrades to the workspace notes with a warning. */
+/** A failing session store never fails the search: it degrades to the workspace notes with a warning. */
 export async function attemptConversationSearch(
-  call: LiminalRecallCall,
+  call: ConversationRecallCall,
   query: string,
   limit: number,
 ): Promise<ConversationAttempt> {
   try {
-    return { results: await searchLiminalConversations(call, { query, limit }) };
+    return { results: await searchStoredConversations(call, { query, limit }) };
   } catch (error) {
     if (call.signal?.aborted) {
       throw error;
@@ -84,7 +84,7 @@ export async function attemptConversationSearch(
  */
 export async function finishConversationRecall(params: {
   attempt: ConversationAttempt | null;
-  config: LiminalRecallConfig | null;
+  config: ConversationRecallConfig | null;
   call: ConversationCall;
   query: string;
   notes: MemorySearchToolResult[];
@@ -127,7 +127,7 @@ export async function finishConversationRecall(params: {
   const scores = new Map<MemorySearchToolResult, number>();
   let results: MemorySearchToolResult[];
   try {
-    const ranked = await rankByLiminalRerank(call, {
+    const ranked = await rankByStoreRerank(call, {
       query: params.query,
       candidates: [...params.notes, ...attempt.results] as MemorySearchToolResult[],
       limit: params.limit,
@@ -174,7 +174,7 @@ export async function executeConversationRead(params: {
     run: async (signal) => {
       const missing = { path: params.relPath, text: "", corpus: "conversations" };
       try {
-        const read = await readLiminalConversation(
+        const read = await readStoredConversation(
           { config, cfg: params.cfg, agentId: params.agentId, signal },
           { sessionId: target.sessionId, seq: target.seq, lines: params.lines },
         );

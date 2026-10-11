@@ -742,7 +742,7 @@ describe("sanitizeOpenAIResponsesReplayForStream tool call ids", () => {
     {
       role: "assistant",
       api: "openai-responses",
-      provider: "liminal",
+      provider: "litellm",
       model: "claude-sonnet-5-5",
       responseId: "resp_tool",
       stopReason: "toolUse",
@@ -768,7 +768,7 @@ describe("sanitizeOpenAIResponsesReplayForStream tool call ids", () => {
   });
 
   it("keeps the provider's ids when the endpoint owns the history", () => {
-    // liminal stores Claude's call as toolu_*; a call_* output left it unanswered and claude_cli
+    // the gateway stores Claude's call as toolu_*; a call_* output left it unanswered and claude_cli
     // refused the turn ("tool result IDs do not match pending Claude calls").
     const [assistant, result] = sanitizeOpenAIResponsesReplayForStream(messages, {
       preserveToolCallIds: true,

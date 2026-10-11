@@ -19,7 +19,7 @@ function headersSent(
   void wrapped(
     {
       api: "openai-responses",
-      provider: "liminal",
+      provider: "litellm",
       id: "composer-2.5",
       baseUrl,
     } as Model<"openai-responses">,
