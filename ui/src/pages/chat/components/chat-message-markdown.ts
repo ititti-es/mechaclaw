@@ -4,6 +4,7 @@ import { html, nothing } from "lit";
 import { CHAT_PENDING_INPUT_MESSAGE_PREFIX } from "../../../../../packages/gateway-protocol/src/schema/chat-history-constants.js";
 import { renderCopyAsMarkdownButton } from "../../../components/copy-button.ts";
 import { icons } from "../../../components/icons.ts";
+import { renderListenButton } from "../../../components/listen-button.ts";
 import { t } from "../../../i18n/index.ts";
 import { registerChatMessageMetadataEnglish } from "../../../i18n/locales/en-chat-message-metadata.ts";
 import type { ChatReplyTarget } from "../../../lib/chat/chat-types.ts";
@@ -32,6 +33,8 @@ export type MessageActionDetails = {
   markdown?: string;
   fullMessage?: { messageId: string; state: AssistantMessageExpansionState | undefined };
   replyTarget?: MessageReplyTarget;
+  /** Assistant text that the Listen action reads aloud. */
+  listenMarkdown?: string;
 };
 
 // Loading and completion each advance the revision: three automatic attempts.
@@ -110,6 +113,7 @@ export function resolveMessageActionDetails(
   return {
     copyMarkdown,
     ...(markdown === undefined ? {} : { markdown }),
+    ...(role === "assistant" && markdown?.trim() ? { listenMarkdown: markdown } : {}),
     fullMessage,
     ...(replyText
       ? {
@@ -136,6 +140,7 @@ export function renderMessageActionButtons(
         ? renderReplyButton(details.replyTarget, opts.onReply)
         : nothing
     }
+    ${details.listenMarkdown ? renderListenButton(details.listenMarkdown) : nothing}
     ${details.markdown ? renderCopyAsMarkdownButton(details.markdown) : nothing}
   `;
 }
