@@ -15,7 +15,7 @@ const NOTE = {
   startLine: 3,
   endLine: 4,
   score: 0.7,
-  snippet: "Sett voice: clone from League VO.",
+  snippet: "Voice notes: clone from reference sample.",
   source: "memory" as const,
 };
 
@@ -26,7 +26,7 @@ const HIT = {
   title: "Fish voice cloning",
   started: "2026-09-28T12:00:00+00:00",
   source: "opencode",
-  agent: "sett",
+  agent: "example-agent",
   harness: "opencode",
   chunk: 0,
   content: "assistant: Fish S2.1 Pro does instant voice cloning from a reference clip.",
@@ -105,7 +105,7 @@ describe("memory_search with liminal conversation recall", () => {
         }),
     });
     const details = await search(config({ enabled: true }), {
-      query: "which voice model for Sett",
+      query: "which voice model for the agent",
     });
     expect(details.results.map((result) => result.path)).toEqual([
       "conversation:ses_1#13",
@@ -119,7 +119,7 @@ describe("memory_search with liminal conversation recall", () => {
       (
         calls.find((call) => call.path === "/memory/rerank")?.body.documents as string[] | undefined
       )?.[0],
-    ).toContain("Sett voice: clone from League VO.");
+    ).toContain("Voice notes: clone from reference sample.");
   });
 
   it("falls back to the notes with a warning when liminal is down", async () => {
@@ -194,7 +194,7 @@ describe("memory_get for conversation hits", () => {
           title: "Fish voice cloning",
           started: "2026-09-28T12:00:00+00:00",
           harness: "opencode",
-          agent: "sett",
+          agent: "example-agent",
           last_seq: 31,
           items: [
             { seq: 12, text: "tool output: Fish docs", hit: false },

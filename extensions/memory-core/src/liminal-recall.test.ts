@@ -112,7 +112,7 @@ describe("searchLiminalConversations", () => {
             title: "Garden plans",
             started: "2026-09-03T08:00:00+00:00",
             source: "opencode",
-            agent: "sett",
+            agent: "example-agent",
             harness: "opencode",
             chunk: 0,
             content: "assistant: plant tomatoes in May",
@@ -143,7 +143,7 @@ describe("searchLiminalConversations", () => {
         startLine: 4,
         endLine: 4,
         source: "opencode",
-        provenanceLabel: "opencode/sett",
+        provenanceLabel: "opencode/example-agent",
         updatedAt: "2026-09-03T08:00:00+00:00",
       },
     ]);
@@ -231,7 +231,7 @@ describe("readLiminalConversation", () => {
         title: "Garden plans",
         started: "2026-09-03T08:00:00+00:00",
         harness: "opencode",
-        agent: "sett",
+        agent: "example-agent",
         last_seq: 9,
         items: [
           { seq: 3, text: "user: when?", hit: false },
