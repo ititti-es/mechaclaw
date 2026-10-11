@@ -95,6 +95,8 @@ class ListenButton extends OpenClawLightDomElement {
     } finally {
       if (this.stop === stop) {
         this.stop = null;
+        // `stop` is not reactive; the button must leave its busy look once playback ends.
+        this.requestUpdate();
       }
       if (activeStop === stop) {
         activeStop = null;
