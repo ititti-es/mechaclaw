@@ -491,7 +491,7 @@ describe("models cli", () => {
     },
     {
       label: "aliases add",
-      args: ["aliases", "add", "zzz", "soraka/grok-4.6"],
+      args: ["aliases", "add", "zzz", "example/grok-4.6"],
       command: modelsAliasesAddCommand,
     },
     {

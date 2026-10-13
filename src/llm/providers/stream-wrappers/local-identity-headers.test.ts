@@ -31,9 +31,9 @@ function headersSent(
 
 describe("local endpoint identity headers", () => {
   it("names the agent and harness to a loopback gateway", () => {
-    expect(headersSent("http://127.0.0.1:4000/v1", "sett")).toEqual({
+    expect(headersSent("http://127.0.0.1:4000/v1", "example-agent")).toEqual({
       "x-litellm-harness": "openclaw",
-      "x-openclaw-agent-id": "sett",
+      "x-openclaw-agent-id": "example-agent",
     });
   });
 
@@ -44,12 +44,12 @@ describe("local endpoint identity headers", () => {
   });
 
   it("never sends them to a remote endpoint", () => {
-    expect(headersSent("https://api.example.com/v1", "sett")).toBeUndefined();
+    expect(headersSent("https://api.example.com/v1", "example-agent")).toBeUndefined();
   });
 
   it("lets caller headers win", () => {
     expect(
-      headersSent("http://127.0.0.1:4000/v1", "sett", { "x-openclaw-agent-id": "other" }),
+      headersSent("http://127.0.0.1:4000/v1", "example-agent", { "x-openclaw-agent-id": "other" }),
     ).toEqual({
       "x-litellm-harness": "openclaw",
       "x-openclaw-agent-id": "other",
